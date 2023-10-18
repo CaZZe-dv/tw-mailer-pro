@@ -9,12 +9,14 @@
 #include <signal.h>
 #include <iostream>
 
-#define PORT 6543
+#define PORT 8888
 #define BUF 1024
 
 using namespace std;
 
 int main(int argc, char *argv[]){
+
+
     //AF_INET for IPv4 protocol
     //SOCK_STREAM sets the type of communication in this case TCP
     //Last parameter set to 0 to be set by operating system
