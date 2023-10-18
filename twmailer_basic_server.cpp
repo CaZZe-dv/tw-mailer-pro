@@ -64,14 +64,16 @@ int main(int argc, char *argv[]){
         return EXIT_FAILURE;
     }
     
-    char buffer[BUF];
-    int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
+    for(int i = 0; i < 10; i++){
+        char buffer[BUF];
+        int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
 
-    if(bytesRead == -1){
-        cerr << "Error occoured while receiving data from client" << endl;
-    }else{
-        buffer[bytesRead] = '\0';
-        cout << buffer << endl;
+        if(bytesRead == -1){
+            cerr << "Error occoured while receiving data from client" << endl;
+        }else{
+            buffer[bytesRead] = '\0';
+            cout << buffer << endl;
+        }
     }
 
     close(clientSocket);
