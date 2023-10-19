@@ -8,15 +8,56 @@
 #include <string.h>
 #include <signal.h>
 #include <iostream>
+#include <vector>
+#include <utility>
+#include <map>
+#include <sstream>
 
-#define PORT 8888
+#define PORT 5555
 #define BUF 1024
 
 using namespace std;
 
+class ProtocolReceive{
+    private:
+        vector<pair<string,int>> structure;
+        map<string,string> variables;
+    public:
+        void fillProtocol(string& message){
+            istringstream inputStream(message);
+            string output;
+            getline(inputStream,output,'\n');
+            for(const auto& line : structure){
+                if(line.second != -1){
+                    getline(inputStream,output,'\n');
+                }else{
+                    string helper;
+                    while(getline(inputStream,helper,'\n')){
+                        if(helper != "."){
+                            output += helper+"\n";
+                        }
+                    }
+                }
+                addVariables(line.first,output);
+            }
+        }
+        void addLineToStructure(const string& s, const int i){
+            structure.push_back(pair<string,int>(s,i));
+        }
+        void addVariables(const string& key, const string& value){
+            variables[key] = value;
+        }
+};
+
+void sendMessageToClient(const int& clientSocket, const string& message){
+    int sendStatus  = send(clientSocket,message.c_str(),strlen(message.c_str()),0);
+    if(sendStatus == -1){
+        cerr << "Error occoured while sending message" << endl;
+    }
+    cout << "Message has been sent to the client" << endl;
+}
+
 int main(int argc, char *argv[]){
-
-
     //AF_INET for IPv4 protocol
     //SOCK_STREAM sets the type of communication in this case TCP
     //Last parameter set to 0 to be set by operating system
@@ -63,18 +104,45 @@ int main(int argc, char *argv[]){
         close(serverSocket);
         return EXIT_FAILURE;
     }
+    map<char,ProtocolReceive> protocols;
+    ProtocolReceive receiveSend;
+    receiveSend.addLineToStructure("Sender",9);
+    receiveSend.addLineToStructure("Receiver",9);
+    receiveSend.addLineToStructure("Subject",80);
+    receiveSend.addLineToStructure("Message",-1);
+    ProtocolReceive receiveList;
+    receiveSend.addLineToStructure("Username",9);
+    ProtocolReceive receiveRead;
+    receiveSend.addLineToStructure("Username",9);
+    receiveSend.addLineToStructure("Message-Number",10);
+    ProtocolReceive receiveDel;
+    receiveSend.addLineToStructure("Username",9);
+    receiveSend.addLineToStructure("Message-Number",10);
+    ProtocolReceive receiveQuit;
+
+    protocols['S'] = receiveSend;
+    protocols['L'] = receiveList;
+    protocols['R'] = receiveRead;
+    protocols['D'] = receiveDel;
+    protocols['Q'] = receiveQuit;
+
     
-    for(int i = 0; i < 10; i++){
+    string message;
+
+    do{
         char buffer[BUF];
         int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
-
         if(bytesRead == -1){
             cerr << "Error occoured while receiving data from client" << endl;
         }else{
             buffer[bytesRead] = '\0';
-            cout << buffer << endl;
+            istringstream inputStream(message);
+            getline(inputStream,message,'\n');
+            protocols[message[0]].fillProtocol(message);
         }
-    }
+
+        sendMessageToClient(clientSocket,"OK big chief");
+    }while(message != "QUIT");
 
     close(clientSocket);
     close(serverSocket);
