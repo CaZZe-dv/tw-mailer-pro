@@ -31,10 +31,10 @@ class Protocol{
             for(const auto& line : structure){
                 cout << line.first << "(max " << line.second << " characters):" << endl;
                 if(line.second != -1){
-                    cin >> input;
+                    getline(cin,input);
                 }else{
                     do{
-                        cin >> input;
+                        getline(cin,input);
                         output.append(input+"\n");
                     }while(input != ".");
                     continue;
@@ -55,7 +55,6 @@ void sendMessageToServer(const int& clientSocket, const string& message){
     }
     cout << "Message has been sent to the server" << endl;
 }
-
 
 int main(int argc, char* argv[]){
     const char* IP_ADDRESS = argv[1];
@@ -102,11 +101,6 @@ int main(int argc, char* argv[]){
     //Quit Protocol
     Protocol quit("QUIT");
     //Associate protocols with user input S => send protocol is called
-    //protocols.insert(pair<char,Protocol>('S',send));
-    //protocols.insert(pair<char,Protocol>('L',list));
-    //protocols.insert(pair<char,Protocol>('R',read));
-    //protocols.insert(pair<char,Protocol>('D',del));
-    //protocols.insert(pair<char,Protocol>('Q',quit));
     protocols['S'] = send;
     protocols['L'] = list;
     protocols['R'] = read;
@@ -116,8 +110,9 @@ int main(int argc, char* argv[]){
     string message;
     do{
         cout << "Enter your command to be sent to the server [SEND,LIST,READ,DEL,QUIT]: ";
-        cin >> message;
+        getline(cin,message);
         string protocolMessage = protocols[message[0]].fillProtocol();
+        cout << protocolMessage << endl;
         sendMessageToServer(clientSocket,protocolMessage);
         char buffer[BUF];
         int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
@@ -128,7 +123,7 @@ int main(int argc, char* argv[]){
             buffer[bytesRead] = '\0';
             cout << buffer << endl;
         }
-    }while(message != "QUIT");
+    }while(message[0] != 'Q');
 
     close(clientSocket);
 

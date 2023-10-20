@@ -12,8 +12,10 @@
 #include <utility>
 #include <map>
 #include <sstream>
+#include <filesystem>
+#include <fstream>
 
-#define PORT 5555
+#define PORT 5004
 #define BUF 1024
 
 using namespace std;
@@ -21,18 +23,18 @@ using namespace std;
 class ProtocolReceive{
     private:
         vector<pair<string,int>> structure;
-        map<string,string> variables;
     public:
-        void fillProtocol(string& message){
+        map<string,string> variables;   
+        void fillProtocol(string message){
             istringstream inputStream(message);
             string output;
-            getline(inputStream,output,'\n');
+            getline(inputStream,output);
             for(const auto& line : structure){
                 if(line.second != -1){
-                    getline(inputStream,output,'\n');
+                    getline(inputStream,output);
                 }else{
                     string helper;
-                    while(getline(inputStream,helper,'\n')){
+                    while(getline(inputStream,helper)){
                         if(helper != "."){
                             output += helper+"\n";
                         }
@@ -47,6 +49,91 @@ class ProtocolReceive{
         void addVariables(const string& key, const string& value){
             variables[key] = value;
         }
+};
+
+class FileManager{
+    private:
+        string mailboxPath;
+        vector<string> readFile(const string& path, const int amount){
+            vector<string> lines;
+            ifstream inputFileStream(path);
+            if(inputFileStream.is_open()){
+                string helper;
+                if(amount != -1){
+                    for(int i = 0; i < amount; i++){
+                        if(getline(inputFileStream,helper)){
+                            lines.push_back(helper);
+                        }
+                    }
+                }else{
+                    while(getline(inputFileStream,helper)){
+                        lines.push_back(helper);
+                    }
+                }
+                inputFileStream.close();   
+            }else{
+                cerr << "Couldnt read file with given path: " << path << endl;
+            }
+            return lines;
+        }
+
+        bool writeFile(const string& path, vector<string> lines){
+            ofstream outputFileStream(path);
+            if(outputFileStream.is_open()){
+                for(const string& line: lines){
+                    outputFileStream << line << endl;
+                }
+                outputFileStream.close();
+                return true;
+            }else{
+                cerr << "Couldnt write into file with given path: " << path << endl;
+                return false;
+            }
+        }
+
+        bool createDirectory(const string& path){
+            if(filesystem::create_directory(path)){
+                return true;
+            }else{
+                cerr << "User already has a inbox" << endl;
+                return false;
+            }
+        }
+        bool createIndexFile(const string& path){
+            vector<string> lines = {"1"};
+            return writeFile(path,lines);
+        }
+        bool incrementIndexFile(const string& path){
+            int index = stoi(readFile(path,1)[0]);
+            vector<string> lines = {to_string(index)};
+            return writeFile(path,lines);
+        }
+        int getCurrentIndex(const string& path){
+            return stoi(readFile(path,1)[0]);
+        }
+    public:
+        FileManager(string mailboxPath){
+            this-> mailboxPath = mailboxPath;
+        }
+
+        void createMessageInInbox(map<string,string> &variables){
+            string pathReceiver = mailboxPath+"/"+variables["Receiver"];
+            string pathIndex = pathReceiver+"/index.txt";
+            createDirectory(pathReceiver);
+            int index = getCurrentIndex(pathIndex);
+            string pathReceiverFile = pathReceiver+"/"+to_string(index)+".txt";
+            vector<string> lines = {
+                variables["Sender"],
+                variables["Receiver"],
+                variables["Subject"],
+                variables["Message"]
+            };
+            writeFile(pathReceiverFile,lines);
+            incrementIndexFile(pathIndex);
+        }
+
+
+
 };
 
 void sendMessageToClient(const int& clientSocket, const string& message){
@@ -104,6 +191,7 @@ int main(int argc, char *argv[]){
         close(serverSocket);
         return EXIT_FAILURE;
     }
+
     map<char,ProtocolReceive> protocols;
     ProtocolReceive receiveSend;
     receiveSend.addLineToStructure("Sender",9);
@@ -111,13 +199,13 @@ int main(int argc, char *argv[]){
     receiveSend.addLineToStructure("Subject",80);
     receiveSend.addLineToStructure("Message",-1);
     ProtocolReceive receiveList;
-    receiveSend.addLineToStructure("Username",9);
+    receiveList.addLineToStructure("Username",9);
     ProtocolReceive receiveRead;
-    receiveSend.addLineToStructure("Username",9);
-    receiveSend.addLineToStructure("Message-Number",10);
+    receiveRead.addLineToStructure("Username",9);
+    receiveRead.addLineToStructure("Message-Number",10);
     ProtocolReceive receiveDel;
-    receiveSend.addLineToStructure("Username",9);
-    receiveSend.addLineToStructure("Message-Number",10);
+    receiveDel.addLineToStructure("Username",9);
+    receiveDel.addLineToStructure("Message-Number",10);
     ProtocolReceive receiveQuit;
 
     protocols['S'] = receiveSend;
@@ -126,9 +214,7 @@ int main(int argc, char *argv[]){
     protocols['D'] = receiveDel;
     protocols['Q'] = receiveQuit;
 
-    
     string message;
-
     do{
         char buffer[BUF];
         int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
@@ -136,13 +222,10 @@ int main(int argc, char *argv[]){
             cerr << "Error occoured while receiving data from client" << endl;
         }else{
             buffer[bytesRead] = '\0';
-            istringstream inputStream(message);
-            getline(inputStream,message,'\n');
+            message = buffer;
             protocols[message[0]].fillProtocol(message);
         }
-
-        sendMessageToClient(clientSocket,"OK big chief");
-    }while(message != "QUIT");
+    }while(message[0] != 'Q');
 
     close(clientSocket);
     close(serverSocket);
