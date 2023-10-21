@@ -14,46 +14,80 @@
 
 using namespace std;
 
-class Protocol{
-    private:
-        vector<pair<string,int>> structure;
-        string command;
-    public:
-        Protocol() {
-            
-        }   
-        Protocol(string command){
-            this->command = command;
-        }
-        string fillProtocol(){
-            string input, output;
-            output.append(command+"\n");
-            for(const auto& line : structure){
-                cout << line.first << "(max " << line.second << " characters):" << endl;
-                if(line.second != -1){
-                    getline(cin,input);
-                }else{
-                    do{
-                        getline(cin,input);
-                        output.append(input+"\n");
-                    }while(input != ".");
-                    continue;
-                }
-                output.append(input+"\n");
-            }
-            return output;
-        }
-        void addLineToStructure(const string& s, const int i){
-            structure.push_back(pair<string,int>(s,i));
-        }
-};
+string readFromConsole(string hint, int characters){
+    string input;
+    if(characters > 0){
+        cout << hint << "(max. " << characters << "characters): ";
+        getline(cin,input);
+    }else if(characters == -1){
+        cout << hint << "(no limit, multiline):" << endl;
+        string helper;
+        do{
+            getline(cin,helper);
+            input.append(helper+"\n");
+        }while(helper != ".");
+    } 
+    return input+'\n';  
+}
 
-void sendMessageToServer(const int& clientSocket, const string& message){
-    int sendStatus  = send(clientSocket,message.c_str(),strlen(message.c_str()),0);
+string createQuitProtocol(){
+    string message;
+    message.append("QUIT\n");
+    return message;
+}
+
+string createDelProtocol(){
+    string message;
+    message.append("DEL\n");
+    message.append(readFromConsole("Username: ",8));
+    message.append(readFromConsole("Message-Number: ",10));
+    return message;
+}
+
+string createReadProtocol(){
+    string message;
+    message.append("READ\n");
+    message.append(readFromConsole("Username: ",8));
+    message.append(readFromConsole("Message-Number: ",10));
+    return message;
+}
+
+string createListProtocol(){
+    string message;
+    message.append("LIST\n");
+    message.append(readFromConsole("Username: ",8));
+    return message;
+}
+
+string createSendProtocol(){
+    string message;
+    message.append("SEND\n");
+    message.append(readFromConsole("Sender: ",8));
+    message.append(readFromConsole("Receiver: ",8));
+    message.append(readFromConsole("Subject: ",80));
+    message.append(readFromConsole("Message: ",-1));
+    return message;
+}
+
+bool sendMessageToServer(const int& clientSocket, const string& message){
+    int sendStatus = send(clientSocket,message.c_str(),strlen(message.c_str()),0);
     if(sendStatus == -1){
         cerr << "Error occoured while sending message" << endl;
+        return false;
     }
-    cout << "Message has been sent to the server" << endl;
+    return true;
+}
+
+string receiveMessageFromServer(const int& clientSocket, const int bufferSize){
+    char buffer[bufferSize];
+    int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
+    if(bytesRead == -1){
+        cerr << "Error occoured while receiving data from client" << endl;
+        return "";
+    }else{
+        buffer[bytesRead] = '\0';
+    }
+    return buffer;
 }
 
 int main(int argc, char* argv[]){
@@ -80,50 +114,38 @@ int main(int argc, char* argv[]){
         return EXIT_FAILURE;
     }
 
-    map<char,Protocol> protocols;
-    //Send protocol
-    Protocol send("SEND");
-    send.addLineToStructure("Sender",9);
-    send.addLineToStructure("Receiver",9);
-    send.addLineToStructure("Subject",80);
-    send.addLineToStructure("Message",-1);
-    //List protocol
-    Protocol list("LIST");
-    list.addLineToStructure("Username",9);
-    //Read protocol
-    Protocol read("READ");
-    read.addLineToStructure("Username",9);
-    read.addLineToStructure("Message-Number",10);
-    //Del protocol
-    Protocol del("DEL");
-    del.addLineToStructure("Username",9);
-    del.addLineToStructure("Message-Number",10);
-    //Quit Protocol
-    Protocol quit("QUIT");
-    //Associate protocols with user input S => send protocol is called
-    protocols['S'] = send;
-    protocols['L'] = list;
-    protocols['R'] = read;
-    protocols['D'] = del;
-    protocols['Q'] = quit;
-
-    string message;
+    string userInput;
+    string protocol;
     do{
         cout << "Enter your command to be sent to the server [SEND,LIST,READ,DEL,QUIT]: ";
-        getline(cin,message);
-        string protocolMessage = protocols[message[0]].fillProtocol();
-        cout << protocolMessage << endl;
-        sendMessageToServer(clientSocket,protocolMessage);
-        char buffer[BUF];
-        int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
-
-        if(bytesRead == -1){
-            cerr << "Error occoured while receiving data from client" << endl;
-        }else{
-            buffer[bytesRead] = '\0';
-            cout << buffer << endl;
+        getline(cin,userInput);
+        switch(userInput[0]){
+            case 'S':
+                protocol = createSendProtocol();
+                break;
+            case 'L':
+                protocol = createListProtocol();
+                break;
+            case 'R':
+                protocol = createReadProtocol();
+                break;
+            case 'D':
+                protocol = createDelProtocol();
+                break;
+            case 'Q':
+                protocol = createQuitProtocol();
+                break;
+            default:
+                cerr << "Not a valid command given" << endl;
+                break;    
         }
-    }while(message[0] != 'Q');
+
+        if(!sendMessageToServer(clientSocket,protocol)){
+            cerr << "Couldnt transmit protocol to server" << endl;
+        }
+
+        cout << receiveMessageFromServer(clientSocket,BUF) << endl;
+    }while(userInput[0] != 'Q');
 
     close(clientSocket);
 

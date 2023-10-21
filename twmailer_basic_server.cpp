@@ -15,41 +15,9 @@
 #include <filesystem>
 #include <fstream>
 
-#define PORT 5004
 #define BUF 1024
 
 using namespace std;
-
-class ProtocolReceive{
-    private:
-        vector<pair<string,int>> structure;
-    public:
-        map<string,string> variables;   
-        void fillProtocol(string message){
-            istringstream inputStream(message);
-            string output;
-            getline(inputStream,output);
-            for(const auto& line : structure){
-                if(line.second != -1){
-                    getline(inputStream,output);
-                }else{
-                    string helper;
-                    while(getline(inputStream,helper)){
-                        if(helper != "."){
-                            output += helper+"\n";
-                        }
-                    }
-                }
-                addVariables(line.first,output);
-            }
-        }
-        void addLineToStructure(const string& s, const int i){
-            structure.push_back(pair<string,int>(s,i));
-        }
-        void addVariables(const string& key, const string& value){
-            variables[key] = value;
-        }
-};
 
 class FileManager{
     private:
@@ -62,12 +30,12 @@ class FileManager{
                 if(amount != -1){
                     for(int i = 0; i < amount; i++){
                         if(getline(inputFileStream,helper)){
-                            lines.push_back(helper);
+                            lines.push_back(helper+'\n');
                         }
                     }
                 }else{
                     while(getline(inputFileStream,helper)){
-                        lines.push_back(helper);
+                        lines.push_back(helper+'\n');
                     }
                 }
                 inputFileStream.close();   
@@ -99,13 +67,18 @@ class FileManager{
                 return false;
             }
         }
+
+        bool isDirectory(const string& path){
+            return filesystem::is_directory(path);
+        }
+
         bool createIndexFile(const string& path){
             vector<string> lines = {"1"};
             return writeFile(path,lines);
         }
         bool incrementIndexFile(const string& path){
             int index = stoi(readFile(path,1)[0]);
-            vector<string> lines = {to_string(index)};
+            vector<string> lines = {to_string(++index)};
             return writeFile(path,lines);
         }
         int getCurrentIndex(const string& path){
@@ -116,35 +89,169 @@ class FileManager{
             this-> mailboxPath = mailboxPath;
         }
 
-        void createMessageInInbox(map<string,string> &variables){
-            string pathReceiver = mailboxPath+"/"+variables["Receiver"];
+        bool createMessage(string sender, string receiver, string subject, string message){
+            string pathReceiver = mailboxPath+"/"+receiver;
             string pathIndex = pathReceiver+"/index.txt";
-            createDirectory(pathReceiver);
+            if(createDirectory(pathReceiver)){
+                createIndexFile(pathIndex);
+            }
             int index = getCurrentIndex(pathIndex);
             string pathReceiverFile = pathReceiver+"/"+to_string(index)+".txt";
             vector<string> lines = {
-                variables["Sender"],
-                variables["Receiver"],
-                variables["Subject"],
-                variables["Message"]
+                sender,
+                receiver,
+                subject,
+                message
             };
             writeFile(pathReceiverFile,lines);
             incrementIndexFile(pathIndex);
+            return true;
         }
 
+        string listMessages(string username){
+            string pathUsername = mailboxPath+"/"+username;
+            string response, helper;
+            int counter = 0;
+            if(isDirectory(pathUsername)){
+                for (const auto &entry : filesystem::directory_iterator(pathUsername)) {
+                    if (filesystem::is_regular_file(entry)) {
+                        if(entry.path().filename() == "index.txt"){
+                            continue;
+                        }
+                        counter++;
+                        helper.append(readFile(entry.path(),3)[2]);
+                    }
+                }
+            }
+            response.append(to_string(counter)+"\n");
+            response.append(helper);
+            return response;
+        }  
 
+        string readMessage(string username, int messageNumber){
+            string pathUsername = mailboxPath+"/"+username;
+            string response;
+            int counter = 0;
+            if(isDirectory(pathUsername)){
+                for(const auto& entry : filesystem::directory_iterator(pathUsername)){
+                    if (filesystem::is_regular_file(entry)) {
+                        if(entry.path().filename() == "index.txt"){
+                            continue;
+                        }
+                        counter++;
+                        if(counter == messageNumber){
+                            for(string line :readFile(entry.path(),-1)){
+                                response.append(line);
+                            }
+                        }
+                    }
+                }
+            }
+            return response != "" ? "OK\n"+response : "ERR\n";
+        }
 
+        string delMessage(string username, int messageNumber){
+            string pathUsername = mailboxPath+"/"+username;
+            string response;
+            int counter = 0;
+            if(isDirectory(pathUsername)){
+                for(const auto& entry : filesystem::directory_iterator(pathUsername)){
+                    if (filesystem::is_regular_file(entry)) {
+                        if(entry.path().filename() == "index.txt"){
+                            continue;
+                        }
+                        counter++;
+                        if(counter == messageNumber){
+                            if(remove(entry.path())){
+                                return "OK\n";
+                            }
+                        }
+                    }
+                }
+            }
+            return "ERR\n";
+        }
 };
 
-void sendMessageToClient(const int& clientSocket, const string& message){
-    int sendStatus  = send(clientSocket,message.c_str(),strlen(message.c_str()),0);
+string readLineMessage(istringstream& inputStream, int characters){
+    string input;
+    if(characters > 0){
+        getline(inputStream,input);
+        input = input.substr(0,characters);
+    }else if(characters == -1){
+        string helper;
+        do{
+            getline(inputStream,helper);
+            if(helper != "."){
+                input.append(helper+"\n");
+            }
+        }while(helper != ".");
+    } 
+    return input;  
+}
+
+string receiveDelProtocol(const string& message, FileManager& fileManager){
+    istringstream inputStream(message);
+    string protocol = readLineMessage(inputStream,4);
+    string username = readLineMessage(inputStream,8);
+    int messageNumber = stoi(readLineMessage(inputStream,10));
+    return fileManager.delMessage(username,messageNumber);
+}
+
+string receiveReadProtocol(const string& message,FileManager& fileManager){
+    istringstream inputStream(message);
+    string protocol = readLineMessage(inputStream,4);
+    string username = readLineMessage(inputStream,8);
+    int messageNumber = stoi(readLineMessage(inputStream,10));
+    return fileManager.readMessage(username,messageNumber);
+}
+
+string receiveListProtocol(const string& message,FileManager& fileManager){
+    istringstream inputStream(message);
+    string protocol = readLineMessage(inputStream,4);
+    string username = readLineMessage(inputStream,8);
+    return fileManager.listMessages(username);
+}
+
+string receiveSendProtocol(const string& message, FileManager& fileManager){
+    istringstream inputStream(message);
+    string protocol = readLineMessage(inputStream,10);
+    string sender = readLineMessage(inputStream,8);
+    string receiver = readLineMessage(inputStream,8);
+    string subject = readLineMessage(inputStream,80);
+    string text = readLineMessage(inputStream,-1);
+    if(fileManager.createMessage(sender,receiver,subject,text)){
+        return "OK\n";
+    }else{
+        return "ERR\n";
+    }
+}
+
+bool sendMessageToClient(const int& clientSocket, const string& message){
+    int sendStatus = send(clientSocket,message.c_str(),strlen(message.c_str()),0);
     if(sendStatus == -1){
         cerr << "Error occoured while sending message" << endl;
+        return false;
     }
-    cout << "Message has been sent to the client" << endl;
+    return true;
+}
+
+string receiveMessageFromClient(const int& clientSocket, const int bufferSize){
+    char buffer[bufferSize];
+    int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
+    if(bytesRead == -1){
+        cerr << "Error occoured while receiving data from client" << endl;
+        return "";
+    }else{
+        buffer[bytesRead] = '\0';
+    }
+    return buffer;
 }
 
 int main(int argc, char *argv[]){
+    const short PORT = atoi(argv[1]);
+    const char* MAIL_SPOOL_DIRECTORYNAME = argv[2];
+    
     //AF_INET for IPv4 protocol
     //SOCK_STREAM sets the type of communication in this case TCP
     //Last parameter set to 0 to be set by operating system
@@ -192,39 +299,32 @@ int main(int argc, char *argv[]){
         return EXIT_FAILURE;
     }
 
-    map<char,ProtocolReceive> protocols;
-    ProtocolReceive receiveSend;
-    receiveSend.addLineToStructure("Sender",9);
-    receiveSend.addLineToStructure("Receiver",9);
-    receiveSend.addLineToStructure("Subject",80);
-    receiveSend.addLineToStructure("Message",-1);
-    ProtocolReceive receiveList;
-    receiveList.addLineToStructure("Username",9);
-    ProtocolReceive receiveRead;
-    receiveRead.addLineToStructure("Username",9);
-    receiveRead.addLineToStructure("Message-Number",10);
-    ProtocolReceive receiveDel;
-    receiveDel.addLineToStructure("Username",9);
-    receiveDel.addLineToStructure("Message-Number",10);
-    ProtocolReceive receiveQuit;
+    FileManager fileManager(MAIL_SPOOL_DIRECTORYNAME);
 
-    protocols['S'] = receiveSend;
-    protocols['L'] = receiveList;
-    protocols['R'] = receiveRead;
-    protocols['D'] = receiveDel;
-    protocols['Q'] = receiveQuit;
-
-    string message;
+    string message, response;
     do{
-        char buffer[BUF];
-        int bytesRead = recv(clientSocket,buffer,sizeof(buffer),0);
-        if(bytesRead == -1){
-            cerr << "Error occoured while receiving data from client" << endl;
-        }else{
-            buffer[bytesRead] = '\0';
-            message = buffer;
-            protocols[message[0]].fillProtocol(message);
-        }
+       message = receiveMessageFromClient(clientSocket,BUF);
+       switch(message[0]){
+            case 'S':
+                response = receiveSendProtocol(message,fileManager);
+                break;
+            case 'L':
+                response = receiveListProtocol(message,fileManager);
+                break;
+            case 'R':
+                response = receiveReadProtocol(message,fileManager);
+                break;
+            case 'D':
+                response = receiveDelProtocol(message,fileManager);
+                break;
+            case 'Q':
+                cout << "Client disconnected from server" << endl;
+                break;
+            default:
+                cerr << "Not a valid protocol given" << endl;
+                break;
+       }
+        sendMessageToClient(clientSocket,response);
     }while(message[0] != 'Q');
 
     close(clientSocket);
