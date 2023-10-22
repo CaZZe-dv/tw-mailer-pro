@@ -48,7 +48,7 @@ std::string createDelProtocol() {
     std::string message;
     message.append("DEL\n");
     message.append(readFromConsole("Username: ", 8));
-    message.append(readFromConsole("Message-Number: ", 10);
+    message.append(readFromConsole("Message-Number: ", 10));
     return message;
 }
 //Create read protocol to be sent to server that reads a specific message from a user
