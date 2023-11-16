@@ -14,172 +14,10 @@
 #include <sstream>
 #include <filesystem>
 #include <fstream>
+#include "FileManager.hpp"
 //Define buffer to be used when receiving data from socket
 const int BUFFER_SIZE = 1024;
-//Class for managing everything with files and also creating responses to be sent to client
-class FileManager {
-private:
-    //Path for the mailspool directory
-    std::string mailboxPath;
-    //Method to read specific amount of lines to a given file as path or -1 to read the whole file
-    std::vector<std::string> readFile(const std::string& path, const int amount) {
-        std::vector<std::string> lines;
-        std::ifstream inputFileStream(path);
-        if (inputFileStream.is_open()) {
-            std::string helper;
-            if (amount != -1) {
-                for (int i = 0; i < amount; i++) {
-                    if (getline(inputFileStream, helper)) {
-                        lines.push_back(helper + '\n');
-                    }
-                }
-            }
-            else {
-                while (getline(inputFileStream, helper)) {
-                    lines.push_back(helper + '\n');
-                }
-            }
-            inputFileStream.close();
-        }
-        else {
-            std::cerr << "Could not read file with the given path: " << path << std::endl;
-        }
-        return lines;
-    }
-    //Method to write into file given as path with specified lines in for mof vector
-    //doesnt append lines overrides when theres already something in file
-    bool writeFile(const std::string& path, std::vector<std::string> lines) {
-        std::ofstream outputFileStream(path);
-        if (outputFileStream.is_open()) {
-            for (const std::string& line : lines) {
-                outputFileStream << line << std::endl;
-            }
-            outputFileStream.close();
-            return true;
-        }
-        else {
-            std::cerr << "Could not write into the file with the given path: " << path << std::endl;
-            return false;
-        }
-    }
-    //Methode to create a directory by given path, returns true when directory successfully created, false when already exists
-    bool createDirectory(const std::string& path) {
-        if (std::filesystem::create_directory(path)) {
-            return true;
-        }
-        else {
-            std::cerr << "User already has an inbox" << std::endl;
-            return false;
-        }
-    }
-    //Method to check if given path is directory
-    bool isDirectory(const std::string& path) {
-        return std::filesystem::is_directory(path);
-    }
-    //Creating an index file to given path, to track number of next message to be created
-    bool createIndexFile(const std::string& path) {
-        std::vector<std::string> lines = { "1" };
-        return writeFile(path, lines);
-    }
-    //Method to increment the number in index file
-    bool incrementIndexFile(const std::string& path) {
-        int index = std::stoi(readFile(path, 1)[0]);
-        std::vector<std::string> lines = { std::to_string(++index) };
-        return writeFile(path, lines);
-    }
-    //Fetches the current index of index file 
-    int getCurrentIndex(const std::string& path) {
-        return std::stoi(readFile(path, 1)[0]);
-    }
-public:
-    FileManager(std::string mailboxPath) {
-        this->mailboxPath = mailboxPath;
-    }
-    //Creates file in receiver directory with all contents passed to function
-    bool createMessage(std::string sender, std::string receiver, std::string subject, std::string message) {
-        std::string pathReceiver = mailboxPath + "/" + receiver;
-        std::string pathIndex = pathReceiver + "/index.txt";
-        if (createDirectory(pathReceiver)) {
-            createIndexFile(pathIndex);
-        }
-        int index = getCurrentIndex(pathIndex);
-        std::string pathReceiverFile = pathReceiver + "/" + std::to_string(index) + ".txt";
-        std::vector<std::string> lines = {
-            sender,
-            receiver,
-            subject,
-            message
-        };
-        writeFile(pathReceiverFile, lines);
-        incrementIndexFile(pathIndex);
-        return true;
-    }
-    //Lists all message subjects of given user
-    std::string listMessages(std::string username) {
-        std::string pathUsername = mailboxPath + "/" + username;
-        std::string response, helper;
-        int counter = 0;
-        if (isDirectory(pathUsername)) {
-            for (const auto& entry : std::filesystem::directory_iterator(pathUsername)) {
-                if (std::filesystem::is_regular_file(entry)) {
-                    if (entry.path().filename() == "index.txt") {
-                        continue;
-                    }
-                    counter++;
-                    helper.append(readFile(entry.path(), 3)[2]);
-                }
-            }
-        }
-        response.append(std::to_string(counter) + "\n");
-        response.append(helper);
-        return response;
-    }
-    //Reads the full content of message from given user and message number
-    std::string readMessage(std::string username, int messageNumber) {
-        std::string pathUsername = mailboxPath + "/" + username;
-        std::string response;
-        int counter = 0;
-        if (isDirectory(pathUsername)) {
-            for (const auto& entry : std::filesystem::directory_iterator(pathUsername)) {
-                if (std::filesystem::is_regular_file(entry)) {
-                    if (entry.path().filename() == "index.txt") {
-                        continue;
-                    }
-                    counter++;
-                    if (counter == messageNumber) {
-                        for (std::string line : readFile(entry.path(), -1)) {
-                            response.append(line);
-                        }
-                    }
-                }
-            }
-        }
-        return response != "" ? "OK\n" + response : "ERR\n";
-    }
-    //Deletes a specific message of directory of given user and number
-    std::string delMessage(std::string username, int messageNumber) {
-        std::string pathUsername = mailboxPath + "/" + username;
-        std::string response;
-        int counter = 0;
-        if (isDirectory(pathUsername)) {
-            for (const auto& entry : std::filesystem::directory_iterator(pathUsername)) {
-                if (std::filesystem::is_regular_file(entry)) {
-                    if (entry.path().filename() == "index.txt") {
-                        continue;
-                    }
-                    counter++;
-                    if (counter == messageNumber) {
-                        if (std::filesystem::remove(entry.path())) {
-                            return "OK\n";
-                        }
-                    }
-                }
-            }
-        }
-        return "ERR\n";
-    }
-};
-//Fuction to read specific amount of character of given string or -1 for multiline until . is reached
+//Function to read specific amount of character of given string or -1 for multiline until . is reached
 std::string readLineMessage(std::istringstream& inputStream, int characters) {
     std::string input;
     if (characters > 0) {
@@ -198,7 +36,7 @@ std::string readLineMessage(std::istringstream& inputStream, int characters) {
     return input;
 }
 //Receiving the delete protocol the client has sent and preparing respone to client
-std::string receiveDelProtocol(const std::string& message, FileManager& fileManager) {
+std::string receiveDelProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 4);
     std::string username = readLineMessage(inputStream, 8);
@@ -206,7 +44,7 @@ std::string receiveDelProtocol(const std::string& message, FileManager& fileMana
     return fileManager.delMessage(username, messageNumber);
 }
 //Receiving read protocol of client and preparing response
-std::string receiveReadProtocol(const std::string& message, FileManager& fileManager) {
+std::string receiveReadProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 4);
     std::string username = readLineMessage(inputStream, 8);
@@ -214,14 +52,14 @@ std::string receiveReadProtocol(const std::string& message, FileManager& fileMan
     return fileManager.readMessage(username, messageNumber);
 }
 //Receiving list protocol of client and preparing response
-std::string receiveListProtocol(const std::string& message, FileManager& fileManager) {
+std::string receiveListProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 4);
     std::string username = readLineMessage(inputStream, 8);
     return fileManager.listMessages(username);
 }
 //Receiving send protocol of cliet and preparing response
-std::string receiveSendProtocol(const std::string& message, FileManager& fileManager) {
+std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 10);
     std::string sender = readLineMessage(inputStream, 8);
@@ -308,7 +146,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    FileManager fileManager(MAIL_SPOOL_DIRECTORYNAME);
+    TwmailerPro::FileManager fileManager(MAIL_SPOOL_DIRECTORYNAME);
 
     std::string message, response;
     do {

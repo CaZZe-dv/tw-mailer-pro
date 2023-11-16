@@ -10,26 +10,46 @@
 #include <utility>
 #include <map>
 #include <cstdlib>
+#include <sstream>
+#include <functional>
+#include <unordered_map>
 //Define const variable for buffer received by socket
 const int BUFFER_SIZE = 1024;
+bool inputIsEmpty(const std::string& input, bool isMultiline){
+    std::istringstream stream(input);
+    std::string line;
+    getline(stream,line);
+    if(isMultiline){
+        while(line != "."){
+            return !(line.length() != 0);
+        }
+        return true;
+    }else{
+        return line.length() == 0;
+    }
+}
 //Define method that lets us easily read a specific amoutn of characters or multiline no limitation
 //from console, with a hint message. 
 //Example: 
 //Sender (max. 8 characters): Cazze 
-std::string readFromConsole(const std::string& hint, int characters) {
+std::string readFromConsole(const std::string& hint, int characters, bool canBeEmpty) {
     std::string input;
     if (characters > 0) {
-        std::cout << hint << "(max. " << characters << " characters): ";
+        std::cout << hint << "(max. " << characters << " characters, " << (canBeEmpty ? "optional" : "required") <<"): ";
         getline(std::cin, input);
+        input.append("\n");
     } else if (characters == -1) {
-        std::cout << hint << "(no limit, multiline):" << std::endl;
+        std::cout << hint << "(no limit, multiline, " << (canBeEmpty ? "optional" : "required") << "):" << std::endl;
         std::string helper;
         do {
             getline(std::cin, helper);
             input.append(helper + "\n");
         } while (helper != ".");
     }
-    return input + '\n';
+    if(!canBeEmpty && inputIsEmpty(input, (characters == -1 ? true : false))){
+        readFromConsole(hint,characters,canBeEmpty);
+    }
+    return input;
 }
 //Create quit protocol to send to the server that client is disconnecting
 //Example: 
@@ -47,8 +67,8 @@ std::string createQuitProtocol() {
 std::string createDelProtocol() {
     std::string message;
     message.append("DEL\n");
-    message.append(readFromConsole("Username: ", 8));
-    message.append(readFromConsole("Message-Number: ", 10));
+    message.append(readFromConsole("Username: ", 8, false));
+    message.append(readFromConsole("Message-Number: ", 10, false));
     return message;
 }
 //Create read protocol to be sent to server that reads a specific message from a user
@@ -59,8 +79,8 @@ std::string createDelProtocol() {
 std::string createReadProtocol() {
     std::string message;
     message.append("READ\n");
-    message.append(readFromConsole("Username: ", 8));
-    message.append(readFromConsole("Message-Number: ", 10));
+    message.append(readFromConsole("Username: ", 8, false));
+    message.append(readFromConsole("Message-Number: ", 10, false));
     return message;
 }
 //Create list protocol to be sent to the server that lists a abbreviation of all messages in inbox
@@ -70,7 +90,7 @@ std::string createReadProtocol() {
 std::string createListProtocol() {
     std::string message;
     message.append("LIST\n");
-    message.append(readFromConsole("Username: ", 8));
+    message.append(readFromConsole("Username: ", 8, false));
     return message;
 }
 //Create send protocol to be sent to the server that sends a message to a receiver specified
@@ -87,10 +107,10 @@ std::string createListProtocol() {
 std::string createSendProtocol() {
     std::string message;
     message.append("SEND\n");
-    message.append(readFromConsole("Sender: ", 8));
-    message.append(readFromConsole("Receiver: ", 8));
-    message.append(readFromConsole("Subject: ", 80));
-    message.append(readFromConsole("Message: ", -1));
+    message.append(readFromConsole("Sender: ", 8, false));
+    message.append(readFromConsole("Receiver: ", 8, false));
+    message.append(readFromConsole("Subject: ", 80, true));
+    message.append(readFromConsole("Message: ", -1, true));
     return message;
 }
 //Function to handle the transmitting of message to the server, clientsocket and message are passed
@@ -156,7 +176,7 @@ int main(int argc, char* argv[]) {
     }
     //Save ip adress and port beeing passed in console
     const char* IP_ADDRESS = argv[1];
-    const short PORT = atoi(argv[2]);
+    const ushort PORT = atoi(argv[2]);
     //Define clientSocket
     int clientSocket;
     //Pass ip adress and port to function
@@ -164,30 +184,22 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
     //Strings for user input and protocol to be sent to server
-    std::string userInput, protocol;
+    std::string input, protocol;
+    std::unordered_map<std::string, std::function<std::string()>> protocols;
+    protocols["SEND"] = createSendProtocol;
+    protocols["LIST"] = createListProtocol;
+    protocols["READ"] = createReadProtocol;
+    protocols["DEL"] = createDelProtocol;
+    protocols["QUIT"] = createQuitProtocol;
     //Do as long as user types QUIT
     do {
         std::cout << "Enter your command to be sent to the server [SEND, LIST, READ, DEL, QUIT]: ";
-        getline(std::cin, userInput);
-        switch (userInput[0]) {
-            case 'S':
-                protocol = createSendProtocol();
-                break;
-            case 'L':
-                protocol = createListProtocol();
-                break;
-            case 'R':
-                protocol = createReadProtocol();
-                break;
-            case 'D':
-                protocol = createDelProtocol();
-                break;
-            case 'Q':
-                protocol = createQuitProtocol();
-                break;
-            default:
-                std::cerr << "Not a valid command given" << std::endl;
-                break;
+        getline(std::cin, input);
+        if(protocols.find(input) != protocols.end()){
+            protocol = protocols[input]();
+        }else{
+            std::cout << "Invalid command has been entered" << std::endl;
+            continue;
         }
         //Sending created protocol to server
         if (!sendMessageToServer(clientSocket, protocol)) {
@@ -195,7 +207,7 @@ int main(int argc, char* argv[]) {
         }
         //After that wait for response of server and print to console
         std::cout << receiveMessageFromServer(clientSocket, BUFFER_SIZE) << std::endl;
-    } while (userInput[0] != 'Q');
+    } while (input != "QUIT");
     //Close client socket
     close(clientSocket);
 
