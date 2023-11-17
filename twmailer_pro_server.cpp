@@ -15,8 +15,10 @@
 #include <filesystem>
 #include <fstream>
 #include "FileManager.hpp"
+#include "UserVerificationLdap.hpp"
 //Define buffer to be used when receiving data from socket
-const int BUFFER_SIZE = 1024;
+#define BUFFER_SIZE 1024
+#define MAX_CLIENTS 64
 //Function to read specific amount of character of given string or -1 for multiline until . is reached
 std::string readLineMessage(std::istringstream& inputStream, int characters) {
     std::string input;
@@ -136,17 +138,24 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "Server is listening to port: " << PORT << std::endl;
 
+    TwmailerPro::FileManager fileManager(MAIL_SPOOL_DIRECTORYNAME);
+    
+    TwmailerPro::UserVerificationLdap uvl;
+
     struct sockaddr_in clientAddress;
     socklen_t clientAddressLength = sizeof(clientAddress);
-    int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddress, &clientAddressLength);
 
-    if (clientSocket == -1) {
-        std::cerr << "Error occurred while accepting a client" << std::endl;
-        close(serverSocket);
-        return EXIT_FAILURE;
+    unsigned short i = 0;
+    while(i < MAX_CLIENTS){
+        int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddress, &clientAddressLength);
+        if (clientSocket == -1) {
+            std::cerr << "Error occurred while accepting a client" << std::endl;
+            close(clientSocket);
+            continue;
+        }
+
+        i++;
     }
-
-    TwmailerPro::FileManager fileManager(MAIL_SPOOL_DIRECTORYNAME);
 
     std::string message, response;
     do {
