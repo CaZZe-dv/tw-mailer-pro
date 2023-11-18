@@ -48,7 +48,7 @@ std::string readFromConsole(const std::string& hint, int characters, bool canBeE
         } while (helper != ".");
     }
     if(!canBeEmpty && inputIsEmpty(input, (characters == -1 ? true : false))){
-        readFromConsole(hint,characters,canBeEmpty);
+        return readFromConsole(hint,characters,canBeEmpty);
     }
     return input;
 }
@@ -111,7 +111,7 @@ std::string readFromConsoleHidden(const std::string& hint, int characters, bool 
         }
     }
     if(!canBeEmpty && inputIsEmpty(password,false)){
-        readFromConsole(hint,characters,canBeEmpty);
+        return readFromConsoleHidden(hint,characters,canBeEmpty);
     }
     return password;
 }
@@ -178,7 +178,7 @@ std::string createLoginProtocol(){
     std::string message;
     message.append("LOGIN\n");
     message.append(readFromConsole("Username: ",20,false));
-    message.append(readFromConsoleHidden("Password: ",20,false));
+    message.append(readFromConsole("Password: ",20,false));
     return message;
 }
 //Function to handle the transmitting of message to the server, clientsocket and message are passed
@@ -269,8 +269,8 @@ int main(int argc, char* argv[]) {
         }
         output = receiveMessageFromServer(clientSocket, BUFFER_SIZE);
         //After that wait for response of server and print to console
-        std::cout << output << std::endl;
-    }while(output != "OK");
+        std::cout << output ;
+    }while(output != "OK\n");
     
     //Do as long as user types QUIT
     do {

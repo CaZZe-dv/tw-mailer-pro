@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ldap.h>
+#include <string>
 
 namespace TwmailerPro {
 class UserVerificationLdap {

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <string>
 #include <iostream>
 
 namespace TwmailerPro {
@@ -10,6 +11,7 @@ UserVerificationLdap::UserVerificationLdap(){
     ldapVersion = LDAP_VERSION3;
     ldapSearchBaseDomainComponent = "dc=technikum-wien,dc=at";
     ldapHandle = NULL;
+    setupLDAPConnection();
 }
 
 void UserVerificationLdap::setupLDAPConnection() {
@@ -37,7 +39,10 @@ void UserVerificationLdap::setupLDAPConnection() {
 
 
 
-std::string UserVerificationLdap::bindLDAPCredentials(const char * username,const char *password) {    
+std::string UserVerificationLdap::bindLDAPCredentials(const char * username,const char *password) {   
+
+    std::cout << username << " " << password << std::endl;
+
     char ldapBindUser[256];
     char rawLdapUser[128];
     strcpy(rawLdapUser, username);

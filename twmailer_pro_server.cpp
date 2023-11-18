@@ -17,6 +17,7 @@
 #include <thread>
 #include <unordered_map>
 #include <functional>
+#include <tuple>
 #include "FileManager.hpp"
 #include "UserVerificationLdap.hpp"
 //Define buffer to be used when receiving data from socket
@@ -84,7 +85,7 @@ std::string receiveLoginProtocol(const std::string& message, TwmailerPro::UserVe
     std::string protocol = readLineMessage(inputStream, 5);
     std::string username = readLineMessage(inputStream, 20);
     std::string password = readLineMessage(inputStream, 20);
-    uvl.bindLDAPCredentials(username.c_str(),password.c_str());
+    return uvl.bindLDAPCredentials(username.c_str(),password.c_str());
 }
 
 //Function to send message to client prints error when something went wrong also returns bool
@@ -115,17 +116,17 @@ void handleClient(int clientSocket, TwmailerPro::FileManager& fileManager, Twmai
         message = receiveMessageFromClient(clientSocket, BUFFER_SIZE);
         std::istringstream inputStream(message);
         getline(inputStream,protocol);
-        if(message == "SEND"){
+        if(protocol == "SEND"){
             response = receiveSendProtocol(message,fileManager);
-        }else if(message == "LIST"){
+        }else if(protocol == "LIST"){
             response = receiveListProtocol(message,fileManager);
-        }else if(message == "READ"){
+        }else if(protocol == "READ"){
             response = receiveReadProtocol(message,fileManager);
-        }else if(message == "DEL"){
+        }else if(protocol == "DEL"){
             response = receiveDelProtocol(message,fileManager);
-        }else if(message == "LOGIN"){
+        }else if(protocol == "LOGIN"){
             response = receiveLoginProtocol(message,uvl);
-        }else if(message == "QUIT"){
+        }else if(protocol == "QUIT"){
             continue;
         }else{
             std::cout << "Invalid command has been sent no action performed" << std::endl; 
@@ -166,7 +167,7 @@ int main(int argc, char* argv[]) {
     // therefore, we give our socket and flag to how many clients the server should listen
     // because specifications for a basic model is only one client, backlog flag is set to 1
     // allowing only one client to be accepted by the server
-    int listenStatus = listen(serverSocket, 1);
+    int listenStatus = listen(serverSocket, MAX_CLIENTS);
     // If the flag returns -1, an error occurred while listening for clients, therefore, an error is printed
     // and the server socket is closed, and the program is exited with an error
     if (listenStatus == -1) {
@@ -184,15 +185,27 @@ int main(int argc, char* argv[]) {
     socklen_t clientAddressLength = sizeof(clientAddress);
 
     unsigned short i = 0;
-    while(i < MAX_CLIENTS){
+    std::vector<std::thread> threads;  // Keep track of the threads
+
+    while (i < MAX_CLIENTS) {
+        std::cout << "Accepting clients" << std::endl;
         int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddress, &clientAddressLength);
+        std::cout << clientSocket << std::endl;
         if (clientSocket == -1) {
             std::cerr << "Error occurred while accepting a client" << std::endl;
             close(clientSocket);
             continue;
         }
-        std::thread clientThread(handleClient,clientSocket,fileManager,uvl);
+        auto params = std::make_tuple(clientSocket, fileManager, uvl);
+        threads.emplace_back(handleClient, std::get<0>(params), std::ref(std::get<1>(params)), std::ref(std::get<2>(params)));
+        std::cout << "Started thread for client" << std::endl;
         i++;
+        std::cout << i << std::endl;
+    }
+
+    // Join all the threads before exiting
+    for (auto& thread : threads) {
+        thread.join();
     }
 
     close(serverSocket);
