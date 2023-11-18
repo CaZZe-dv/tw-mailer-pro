@@ -13,7 +13,7 @@ private:
 public:
     UserVerificationLdap();
     void setupLDAPConnection();
-    void bindLDAPCredentials(const char *ldapBindUser, const char *ldapBindPassword);
+    std::string bindLDAPCredentials(const char *ldapBindUser, const char *ldapBindPassword);
 };
 }
 

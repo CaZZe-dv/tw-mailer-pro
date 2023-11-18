@@ -14,6 +14,9 @@
 #include <sstream>
 #include <filesystem>
 #include <fstream>
+#include <thread>
+#include <unordered_map>
+#include <functional>
 #include "FileManager.hpp"
 #include "UserVerificationLdap.hpp"
 //Define buffer to be used when receiving data from socket
@@ -63,7 +66,7 @@ std::string receiveListProtocol(const std::string& message, TwmailerPro::FileMan
 //Receiving send protocol of cliet and preparing response
 std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
     std::istringstream inputStream(message);
-    std::string protocol = readLineMessage(inputStream, 10);
+    std::string protocol = readLineMessage(inputStream, 4);
     std::string sender = readLineMessage(inputStream, 8);
     std::string receiver = readLineMessage(inputStream, 8);
     std::string subject = readLineMessage(inputStream, 80);
@@ -75,6 +78,15 @@ std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileMan
         return "ERR\n";
     }
 }
+
+std::string receiveLoginProtocol(const std::string& message, TwmailerPro::UserVerificationLdap& uvl) {
+    std::istringstream inputStream(message);
+    std::string protocol = readLineMessage(inputStream, 5);
+    std::string username = readLineMessage(inputStream, 20);
+    std::string password = readLineMessage(inputStream, 20);
+    uvl.bindLDAPCredentials(username.c_str(),password.c_str());
+}
+
 //Function to send message to client prints error when something went wrong also returns bool
 bool sendMessageToClient(const int& clientSocket, const std::string& message) {
     int sendStatus = send(clientSocket, message.c_str(), strlen(message.c_str()), 0);
@@ -95,6 +107,32 @@ std::string receiveMessageFromClient(const int& clientSocket, const int bufferSi
         buffer[bytesRead] = '\0';
     }
     return buffer;
+}
+
+void handleClient(int clientSocket, TwmailerPro::FileManager& fileManager, TwmailerPro::UserVerificationLdap& uvl){
+    std::string message, response, protocol;
+    do {
+        message = receiveMessageFromClient(clientSocket, BUFFER_SIZE);
+        std::istringstream inputStream(message);
+        getline(inputStream,protocol);
+        if(message == "SEND"){
+            response = receiveSendProtocol(message,fileManager);
+        }else if(message == "LIST"){
+            response = receiveListProtocol(message,fileManager);
+        }else if(message == "READ"){
+            response = receiveReadProtocol(message,fileManager);
+        }else if(message == "DEL"){
+            response = receiveDelProtocol(message,fileManager);
+        }else if(message == "LOGIN"){
+            response = receiveLoginProtocol(message,uvl);
+        }else if(message == "QUIT"){
+            continue;
+        }else{
+            std::cout << "Invalid command has been sent no action performed" << std::endl; 
+        }
+        sendMessageToClient(clientSocket, response);
+    } while (protocol != "QUIT");
+    close(clientSocket);
 }
 
 int main(int argc, char* argv[]) {
@@ -153,37 +191,10 @@ int main(int argc, char* argv[]) {
             close(clientSocket);
             continue;
         }
-
+        std::thread clientThread(handleClient,clientSocket,fileManager,uvl);
         i++;
     }
 
-    std::string message, response;
-    do {
-        message = receiveMessageFromClient(clientSocket, BUFFER_SIZE);
-        switch (message[0]) {
-        case 'S':
-            response = receiveSendProtocol(message, fileManager);
-            break;
-        case 'L':
-            response = receiveListProtocol(message, fileManager);
-            break;
-        case 'R':
-            response = receiveReadProtocol(message, fileManager);
-            break;
-        case 'D':
-            response = receiveDelProtocol(message, fileManager);
-            break;
-        case 'Q':
-            std::cout << "Client disconnected from the server" << std::endl;
-            break;
-        default:
-            std::cerr << "Not a valid protocol given" << std::endl;
-            break;
-        }
-        sendMessageToClient(clientSocket, response);
-    } while (message[0] != 'Q');
-
-    close(clientSocket);
     close(serverSocket);
 
     return EXIT_SUCCESS;

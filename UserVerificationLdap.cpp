@@ -37,7 +37,7 @@ void UserVerificationLdap::setupLDAPConnection() {
 
 
 
-void UserVerificationLdap::bindLDAPCredentials(const char * username,const char *password) {    
+std::string UserVerificationLdap::bindLDAPCredentials(const char * username,const char *password) {    
     char ldapBindUser[256];
     char rawLdapUser[128];
     strcpy(rawLdapUser, username);
@@ -55,8 +55,9 @@ void UserVerificationLdap::bindLDAPCredentials(const char * username,const char 
     if (rc != LDAP_SUCCESS) {
         fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
         ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-        exit(EXIT_FAILURE);
+        return "ERR\n";
     }
     std::cout << "Authentification was successful" << std::endl;
+    return "OK\n";
 }
 }
