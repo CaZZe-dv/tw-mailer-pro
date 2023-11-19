@@ -14,8 +14,8 @@ clean:
 	clear
 	rm -f bin/*
 
-./bin/server: ./obj/twmailer_pro_server.o ./obj/FileManager.o ./obj/UserVerificationLdap.o
-	${CC} ${CFLAGSSERVER} -o bin/server obj/twmailer_pro_server.o obj/FileManager.o obj/UserVerificationLdap.o ${LIBS}
+./bin/server: ./obj/twmailer_pro_server.o ./obj/FileManager.o ./obj/UserVerificationLdap.o ./obj/Blacklist.o
+	${CC} ${CFLAGSSERVER} -o bin/server obj/twmailer_pro_server.o obj/FileManager.o obj/UserVerificationLdap.o obj/Blacklist.o ${LIBS}
 
 ./bin/client: twmailer_pro_client.cpp
 	${CC} ${CFLAGSCLIENT} -o bin/client twmailer_pro_client.cpp
@@ -28,6 +28,9 @@ clean:
 
 ./obj/UserVerificationLdap.o: UserVerificationLdap.cpp
 	${CC} ${CFLAGSSERVER} -o obj/UserVerificationLdap.o UserVerificationLdap.cpp -c
+
+./obj/Blacklist.o: Blacklist.cpp
+	${CC} ${CFLAGSSERVER} -o obj/Blacklist.o Blacklist.cpp -c	
 
 #Server: ./bin/server 4446 /home/matthias/projects/helloworld/tw-mailer-pro/mailspooldirectory/
 #Client: ./bin/client 127.0.0.1 4446

@@ -20,6 +20,7 @@
 #include <tuple>
 #include "FileManager.hpp"
 #include "UserVerificationLdap.hpp"
+#include "Blacklist.hpp"
 //Define buffer to be used when receiving data from socket
 #define BUFFER_SIZE 1024
 #define MAX_CLIENTS 64
@@ -68,6 +69,7 @@ std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileMan
     std::string receiver = readLineMessage(inputStream, 8);
     std::string subject = readLineMessage(inputStream, 80);
     std::string text = readLineMessage(inputStream, -1);
+    std::cout << "BLUBBLAB" << std::endl;
     if (fileManager.createMessage(sender, receiver, subject, text)) {
         return "OK\n";
     }
@@ -76,13 +78,12 @@ std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileMan
     }
 }
 
-std::string receiveLoginProtocol(const std::string& message, TwmailerPro::UserVerificationLdap& uvl, std::string& usern) {
+std::pair<std::string, std::string> receiveLoginProtocol(const std::string& message) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 5);
     std::string username = readLineMessage(inputStream, 20);
-    usern = username;
     std::string password = readLineMessage(inputStream, 20);
-    return uvl.bindLDAPCredentials(username.c_str(),password.c_str());
+    return std::make_pair(username,password);
 }
 //Function to send message to client prints error when something went wrong also returns bool
 bool sendMessageToClient(const int& clientSocket, const std::string& message) {
@@ -106,7 +107,7 @@ std::string receiveMessageFromClient(const int& clientSocket, const int bufferSi
     return buffer;
 }
 
-void handleClient(int clientSocket, TwmailerPro::FileManager& fileManager, TwmailerPro::UserVerificationLdap& uvl){
+void handleClient(int clientSocket, TwmailerPro::FileManager& fileManager, TwmailerPro::UserVerificationLdap& uvl, TwmailerPro::Blacklist& blacklist){
     std::string message, response, protocol, username;
     bool loggedIn = false;
     do {
@@ -115,8 +116,19 @@ void handleClient(int clientSocket, TwmailerPro::FileManager& fileManager, Twmai
         getline(inputStream,protocol);
         if(!loggedIn){
             if(protocol == "LOGIN"){
-                response = receiveLoginProtocol(message,uvl,username);
-                loggedIn = response == "OK\n";
+                std::pair<std::string, std::string> credentials = receiveLoginProtocol(message);
+                response = uvl.bindLDAPCredentials(credentials.first.c_str(),credentials.second.c_str());
+                if(response == "ERR\n"){
+                    blacklist.isBlacklisted(credentials.first);
+                }
+                if(response == "OK\n"){
+                    if(blacklist.isBlacklisted(credentials.first)){
+                        response == "ERR\n";
+                    }else{
+                        username = credentials.first;
+                        loggedIn = true;
+                    }
+                }
             }else if(protocol != "QUIT"){
                 std::cout << "Invalid command has been sent no action performed" << std::endl;
             }
@@ -190,6 +202,7 @@ int main(int argc, char* argv[]) {
 
     TwmailerPro::FileManager fileManager(MAIL_SPOOL_DIRECTORYNAME);
     TwmailerPro::UserVerificationLdap uvl;
+    TwmailerPro::Blacklist blacklist;
 
     struct sockaddr_in clientAddress;
     socklen_t clientAddressLength = sizeof(clientAddress);
@@ -203,7 +216,7 @@ int main(int argc, char* argv[]) {
             close(clientSocket);
             continue;
         }
-        std::thread thread(std::bind(handleClient, clientSocket, std::ref(fileManager), std::ref(uvl)));
+        std::thread thread(std::bind(handleClient, clientSocket, std::ref(fileManager), std::ref(uvl), std::ref(blacklist)));
         thread.detach();  // Detach the thread, so it can run independently
     }
 

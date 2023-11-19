@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <mutex>
 
 namespace TwmailerPro{
     //Class for managing everything with files and also creating responses to be sent to client
@@ -9,6 +10,17 @@ namespace TwmailerPro{
     private:
         //Path for the mailspool directory
         std::string mailboxPath;
+        //Mutexes for thread synchronisation
+        std::mutex readFileMutex;
+        std::mutex writeFileMutex;
+        std::mutex createDirectoryMutex;
+        std::mutex createIndexFileMutex;
+        std::mutex incrementIndexFileMutex;
+        std::mutex getCurrentIndexMutex;
+        std::mutex createMessageMutex;
+        std::mutex listMessageMutex;
+        std::mutex readMessageMutex;
+        std::mutex delMessageMutex;
         //Method to read specific amount of lines to a given file as path or -1 to read the whole file
         std::vector<std::string> readFile(const std::string& path, const int amount);
         //Method to write into file given as path with specified lines in for mof vector

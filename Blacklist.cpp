@@ -2,47 +2,45 @@
 #include <string>
 #include <utility>
 #include <chrono>
+#include "Blacklist.hpp"
 
-class Blacklist{
-    private:
-        const static int TIMEOUT = 1;
-        const static int MAX_LOGIN_TRYS = 3;
-        using Clock = std::chrono::steady_clock;
-        using TimePoint = std::chrono::time_point<Clock>;
-        std::unordered_map<std::string, std::pair<int,TimePoint>> list;
-    public:
-        bool addToBlacklist(std::string item){
-            if(list.find(item) == list.end()){
-                list[item] = std::make_pair(1,getCurrentTime());
-                return true;
-            }
+namespace TwmailerPro{
+    using Clock = std::chrono::steady_clock;
+    using TimePoint = std::chrono::time_point<Clock>;
+    bool Blacklist::addToBlacklist(std::string item){
+        if(list.find(item) == list.end()){
+            list[item] = std::make_pair(0,getCurrentTime());
+            return true;
+        }
+        return false;
+    }
+    TimePoint Blacklist::getCurrentTime(){
+        return Clock::now();
+    }
+    bool Blacklist::incrementLoginCounter(std::string item){
+        if(list[item].first == MAX_LOGIN_TRYS){
             return false;
         }
-
-        TimePoint getCurrentTime(){
-            return Clock::now();
-        }
-
-        bool incrementLoginCounter(std::string item){
-            if(list[item].first+1 < MAX_LOGIN_TRYS){
-                list[item] = std::make_pair()
+        list[item] = std::make_pair(list[item].first+1,getCurrentTime());
+        return list[item].first < MAX_LOGIN_TRYS;
+    }
+    bool Blacklist::isCooldown(std::string user){
+        TimePoint currentTime = Clock::now();
+        auto cooldown = std::chrono::duration_cast<std::chrono::minutes>(currentTime-list[user].second);
+        return cooldown.count() < TIMEOUT;
+    }
+    bool Blacklist::isBlacklisted(std::string user){
+        if(!addToBlacklist(user)){
+            if(!incrementLoginCounter(user)){
+                if(!isCooldown(user)){
+                    list[user].first = 0;
+                    return false;
+                }
+                return true;
+            }else{
+                return false;
             }
         }
-
-        bool isBlacklisted(std::string user, std::string ip){
-            if(!addToBlacklist(user)){
-
-            }
-        }
-        
-
-
-
-
-
-
-
-
-
-
+        return false;
+    }
 }

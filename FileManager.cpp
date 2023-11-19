@@ -3,6 +3,7 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#include <mutex>
 
 namespace TwmailerPro{
 FileManager::FileManager(std::string mailboxPath) {
@@ -11,6 +12,7 @@ FileManager::FileManager(std::string mailboxPath) {
 }
 //Method to read specific amount of lines to a given file as path or -1 to read the whole file
 std::vector<std::string> FileManager::readFile(const std::string& path, const int amount) {
+    std::lock_guard<std::mutex> lock(readFileMutex);
     std::vector<std::string> lines;
     std::ifstream inputFileStream(path);
     if (inputFileStream.is_open()) {
@@ -37,6 +39,7 @@ std::vector<std::string> FileManager::readFile(const std::string& path, const in
 //Method to write into file given as path with specified lines in for mof vector
 //doesnt append lines overrides when theres already something in file
 bool FileManager::writeFile(const std::string& path, std::vector<std::string> lines) {
+    std::lock_guard<std::mutex> lock(writeFileMutex);
     std::ofstream outputFileStream(path);
     if (outputFileStream.is_open()) {
         for (const std::string& line : lines) {
@@ -52,6 +55,7 @@ bool FileManager::writeFile(const std::string& path, std::vector<std::string> li
 }
 //Methode to create a directory by given path, returns true when directory successfully created, false when already exists
 bool FileManager::createDirectory(const std::string& path) {
+    std::lock_guard<std::mutex> lock(createDirectoryMutex);
     if (std::filesystem::create_directory(path)) {
         return true;
     }
@@ -62,23 +66,27 @@ bool FileManager::createDirectory(const std::string& path) {
 }
 //Creating an index file to given path, to track number of next message to be created
 bool FileManager::createIndexFile(const std::string& path) {
+    std::lock_guard<std::mutex> lock(createIndexFileMutex);
     std::vector<std::string> lines = { "1" };
     return writeFile(path, lines);
 }
 //Method to increment the number in index file
 bool FileManager::incrementIndexFile(const std::string& path) {
+    std::lock_guard<std::mutex> lock(incrementIndexFileMutex);
     int index = std::stoi(readFile(path, 1)[0]);
     std::vector<std::string> lines = { std::to_string(++index) };
     return writeFile(path, lines);
 }
 //Fetches the current index of index file 
 int FileManager::getCurrentIndex(const std::string& path) {
+    std::lock_guard<std::mutex> lock(getCurrentIndexMutex);
     return std::stoi(readFile(path, 1)[0]);
 }
 
 //Creates file in receiver directory with all contents passed to function
 bool FileManager::createMessage(std::string sender, std::string receiver, std::string subject, std::string message) {
-    std::cout << mailboxPath << " " << sender << " " << receiver << " " << subject << " " << message << std::endl;
+    std::lock_guard<std::mutex> lock(createMessageMutex);
+    std::cout << "createMessage start" << std::endl;
     std::string pathReceiver = mailboxPath + "/" + receiver;
     std::string pathIndex = pathReceiver + "/index.txt";
     if (createDirectory(pathReceiver)) {
@@ -94,10 +102,12 @@ bool FileManager::createMessage(std::string sender, std::string receiver, std::s
     };
     writeFile(pathReceiverFile, lines);
     incrementIndexFile(pathIndex);
+    std::cout << "createMessage end" << std::endl;
     return true;
 }
 //Lists all message subjects of given user
 std::string FileManager::listMessages(std::string username) {
+    std::lock_guard<std::mutex> lock(listMessageMutex);
     std::string pathUsername = mailboxPath + "/" + username;
     std::string response, helper;
     int counter = 0;
@@ -118,6 +128,7 @@ std::string FileManager::listMessages(std::string username) {
 }
 //Reads the full content of message from given user and message number
 std::string FileManager::readMessage(std::string username, int messageNumber) {
+    std::lock_guard<std::mutex> lock(readMessageMutex);
     std::string pathUsername = mailboxPath + "/" + username;
     std::string response;
     int counter = 0;
@@ -140,6 +151,7 @@ std::string FileManager::readMessage(std::string username, int messageNumber) {
 }
 //Deletes a specific message of directory of given user and number
 std::string FileManager::delMessage(std::string username, int messageNumber) {
+    std::lock_guard<std::mutex> lock(delMessageMutex);
     std::string pathUsername = mailboxPath + "/" + username;
     std::string response;
     int counter = 0;
