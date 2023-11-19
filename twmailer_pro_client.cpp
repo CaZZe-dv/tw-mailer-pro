@@ -52,46 +52,24 @@ std::string readFromConsole(const std::string& hint, int characters, bool canBeE
     }
     return input;
 }
-
+//Function to interfere with input in conole to make it scensored
 int getch()
 {
     int ch;
-    // https://man7.org/linux/man-pages/man3/termios.3.html
     struct termios t_old, t_new;
-
-    // https://man7.org/linux/man-pages/man3/termios.3.html
-    // tcgetattr() gets the parameters associated with the object referred
-    //   by fd and stores them in the termios structure referenced by
-    //   termios_p
     tcgetattr(STDIN_FILENO, &t_old);
-    
-    // copy old to new to have a base for setting c_lflags
     t_new = t_old;
-
-    // https://man7.org/linux/man-pages/man3/termios.3.html
-    //
-    // ICANON Enable canonical mode (described below).
-    //   * Input is made available line by line (max 4096 chars).
-    //   * In noncanonical mode input is available immediately.
-    //
-    // ECHO   Echo input characters.
     t_new.c_lflag &= ~(ICANON | ECHO);
-    
-    // sets the attributes
-    // TCSANOW: the change occurs immediately.
     tcsetattr(STDIN_FILENO, TCSANOW, &t_new);
-
     ch = getchar();
-
-    // reset stored attributes
     tcsetattr(STDIN_FILENO, TCSANOW, &t_old);
-
     return ch;
 }
 std::string readFromConsoleHidden(const std::string& hint, int characters, bool canBeEmpty){
     char password[characters];
     int index = 0;
     if(characters > 0){
+        std::cout << hint << "(max. " << characters << " characters, " << (canBeEmpty ? "optional" : "required") <<"): ";
         while (true) {
             char ch = getch();  // Use _getch() to read a character without echoing
             if (ch == '\r' || ch == '\n') {
@@ -178,7 +156,7 @@ std::string createLoginProtocol(){
     std::string message;
     message.append("LOGIN\n");
     message.append(readFromConsole("Username: ",20,false));
-    message.append(readFromConsole("Password: ",20,false));
+    message.append(readFromConsoleHidden("Password: ",20,false));
     return message;
 }
 //Function to handle the transmitting of message to the server, clientsocket and message are passed
@@ -199,8 +177,7 @@ std::string receiveMessageFromServer(const int& clientSocket, const int bufferSi
     int bytesRead = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
     if (bytesRead == -1) {
         std::cerr << "Error occurred while receiving data from client" << std::endl;
-        return "";
-    } else {
+        return "";    } else {
         buffer[bytesRead] = '\0';
     }
     return buffer;
@@ -260,17 +237,30 @@ int main(int argc, char* argv[]) {
     protocols["DEL"] = createDelProtocol;
     protocols["QUIT"] = createQuitProtocol;
     //protocols["LOGIN"] = createLoginProtocol;
-    //Login until successful
-    do{
-        std::cout << "Enter your LDAP Credentials" << std::endl;
-        protocol = createLoginProtocol();
+    //Login until successful or User quitting
+    do {
+        std::cout << "You can either login or quit [LOGIN, QUIT]: ";
+        getline(std::cin, input);
+        if (input == "LOGIN") {
+            std::cout << "Enter your LDAP Credentials" << std::endl;
+            protocol = createLoginProtocol();
+        } else if (input == "QUIT") {
+            protocol = createQuitProtocol();
+            if (!sendMessageToServer(clientSocket, protocol)) {
+                std::cerr << "Couldn't transmit protocol to the server" << std::endl;
+            }
+            close(clientSocket);
+            return EXIT_SUCCESS;
+        } else {
+            std::cout << "Invalid command has been entered" << std::endl;
+            continue;
+        }
         if (!sendMessageToServer(clientSocket, protocol)) {
-            std::cerr << "Couldn't transmit protocol to server" << std::endl;
+            std::cerr << "Couldn't transmit protocol to the server" << std::endl;
         }
         output = receiveMessageFromServer(clientSocket, BUFFER_SIZE);
-        //After that wait for response of server and print to console
-        std::cout << output ;
-    }while(output != "OK\n");
+        std::cout << output << std::endl;
+    } while (output != "OK\n");
     
     //Do as long as user types QUIT
     do {

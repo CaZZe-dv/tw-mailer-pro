@@ -84,7 +84,6 @@ std::string receiveLoginProtocol(const std::string& message, TwmailerPro::UserVe
     std::string password = readLineMessage(inputStream, 20);
     return uvl.bindLDAPCredentials(username.c_str(),password.c_str());
 }
-
 //Function to send message to client prints error when something went wrong also returns bool
 bool sendMessageToClient(const int& clientSocket, const std::string& message) {
     int sendStatus = send(clientSocket, message.c_str(), strlen(message.c_str()), 0);
@@ -139,32 +138,29 @@ void handleClient(int clientSocket, TwmailerPro::FileManager& fileManager, Twmai
     close(clientSocket);
 }
 
-int main(int argc, char* argv[]) {
-    const short PORT = atoi(argv[1]);
-    const char* MAIL_SPOOL_DIRECTORYNAME = argv[2];
-
+bool establishConnection(int& serverSocket, const unsigned short& port){
     // AF_INET for IPv4 protocol
     // SOCK_STREAM sets the type of communication in this case TCP
     // Last parameter set to 0 to be set by the operating system
-    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     // If an error occurs while creating the socket object, the method returns -1
     // So we print an error and exit the program with exit code 1 == failure
     if (serverSocket == -1) {
         std::cerr << "Error occurred while creating a socket for the server" << std::endl;
-        return EXIT_FAILURE;
+        return false;
     }
     // Define sockaddr_in struct to declare the IP address, port, and communication protocol
     struct sockaddr_in serverAddress;
     serverAddress.sin_addr.s_addr = INADDR_ANY;
     serverAddress.sin_family = AF_INET;
     // htons is used to transform the port number to network byte order
-    serverAddress.sin_port = htons(PORT);
+    serverAddress.sin_port = htons(port);
 
     int bindStatus = bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
     if (bindStatus == -1) {
         std::cerr << "Error occurred while binding IP and port to the server socket" << std::endl;
         close(serverSocket);
-        return EXIT_FAILURE;
+        return false;
     }
     // After IP and port have been successfully bound to the socket, we can start listening for clients
     // therefore, we give our socket and flag to how many clients the server should listen
@@ -176,21 +172,29 @@ int main(int argc, char* argv[]) {
     if (listenStatus == -1) {
         std::cerr << "Error occurred while listening for connection" << std::endl;
         close(serverSocket);
+        return false;
+    }
+    return true;
+}
+
+int main(int argc, char* argv[]) {
+    const unsigned short PORT = atoi(argv[1]);
+    const char* MAIL_SPOOL_DIRECTORYNAME = argv[2];
+
+    int serverSocket;
+
+    if(!establishConnection(serverSocket,PORT)){
         return EXIT_FAILURE;
     }
     std::cout << "Server is listening to port: " << PORT << std::endl;
 
     TwmailerPro::FileManager fileManager(MAIL_SPOOL_DIRECTORYNAME);
-    
     TwmailerPro::UserVerificationLdap uvl;
 
     struct sockaddr_in clientAddress;
     socklen_t clientAddressLength = sizeof(clientAddress);
 
-    unsigned short i = 0;
-    std::vector<std::thread> threads;  // Keep track of the threads
-
-    while (i < MAX_CLIENTS) {
+    while (true) {
         std::cout << "Accepting clients" << std::endl;
         int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddress, &clientAddressLength);
         std::cout << clientSocket << std::endl;
@@ -199,16 +203,8 @@ int main(int argc, char* argv[]) {
             close(clientSocket);
             continue;
         }
-        auto params = std::make_tuple(clientSocket, fileManager, uvl);
-        threads.emplace_back(handleClient, std::get<0>(params), std::ref(std::get<1>(params)), std::ref(std::get<2>(params)));
-        std::cout << "Started thread for client" << std::endl;
-        i++;
-        std::cout << i << std::endl;
-    }
-
-    // Join all the threads before exiting
-    for (auto& thread : threads) {
-        thread.join();
+        std::thread thread(std::bind(handleClient, clientSocket, std::ref(fileManager), std::ref(uvl)));
+        thread.detach();  // Detach the thread, so it can run independently
     }
 
     close(serverSocket);

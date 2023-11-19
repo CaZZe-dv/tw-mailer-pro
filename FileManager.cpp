@@ -7,6 +7,7 @@
 namespace TwmailerPro{
 FileManager::FileManager(std::string mailboxPath) {
     this->mailboxPath = mailboxPath;
+    std::cout << "Mail directory path is: " << mailboxPath << std::endl;
 }
 //Method to read specific amount of lines to a given file as path or -1 to read the whole file
 std::vector<std::string> FileManager::readFile(const std::string& path, const int amount) {
@@ -77,6 +78,7 @@ int FileManager::getCurrentIndex(const std::string& path) {
 
 //Creates file in receiver directory with all contents passed to function
 bool FileManager::createMessage(std::string sender, std::string receiver, std::string subject, std::string message) {
+    std::cout << mailboxPath << " " << sender << " " << receiver << " " << subject << " " << message << std::endl;
     std::string pathReceiver = mailboxPath + "/" + receiver;
     std::string pathIndex = pathReceiver + "/index.txt";
     if (createDirectory(pathReceiver)) {
