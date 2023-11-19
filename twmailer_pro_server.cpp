@@ -42,33 +42,29 @@ std::string readLineMessage(std::istringstream& inputStream, int characters) {
     return input;
 }
 //Receiving the delete protocol the client has sent and preparing respone to client
-std::string receiveDelProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
+std::string receiveDelProtocol(const std::string& message, TwmailerPro::FileManager& fileManager,const std::string& username) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 4);
-    std::string username = readLineMessage(inputStream, 8);
     int messageNumber = std::stoi(readLineMessage(inputStream, 10));
     return fileManager.delMessage(username, messageNumber);
 }
 //Receiving read protocol of client and preparing response
-std::string receiveReadProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
+std::string receiveReadProtocol(const std::string& message, TwmailerPro::FileManager& fileManager,const std::string& username) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 4);
-    std::string username = readLineMessage(inputStream, 8);
     int messageNumber = std::stoi(readLineMessage(inputStream, 10));
     return fileManager.readMessage(username, messageNumber);
 }
 //Receiving list protocol of client and preparing response
-std::string receiveListProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
+std::string receiveListProtocol(const std::string& message, TwmailerPro::FileManager& fileManager,const std::string& username) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 4);
-    std::string username = readLineMessage(inputStream, 8);
     return fileManager.listMessages(username);
 }
 //Receiving send protocol of cliet and preparing response
-std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileManager& fileManager) {
+std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileManager& fileManager,const std::string& sender) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 4);
-    std::string sender = readLineMessage(inputStream, 8);
     std::string receiver = readLineMessage(inputStream, 8);
     std::string subject = readLineMessage(inputStream, 80);
     std::string text = readLineMessage(inputStream, -1);
@@ -80,10 +76,11 @@ std::string receiveSendProtocol(const std::string& message, TwmailerPro::FileMan
     }
 }
 
-std::string receiveLoginProtocol(const std::string& message, TwmailerPro::UserVerificationLdap& uvl) {
+std::string receiveLoginProtocol(const std::string& message, TwmailerPro::UserVerificationLdap& uvl, std::string& usern) {
     std::istringstream inputStream(message);
     std::string protocol = readLineMessage(inputStream, 5);
     std::string username = readLineMessage(inputStream, 20);
+    usern = username;
     std::string password = readLineMessage(inputStream, 20);
     return uvl.bindLDAPCredentials(username.c_str(),password.c_str());
 }
@@ -111,25 +108,31 @@ std::string receiveMessageFromClient(const int& clientSocket, const int bufferSi
 }
 
 void handleClient(int clientSocket, TwmailerPro::FileManager& fileManager, TwmailerPro::UserVerificationLdap& uvl){
-    std::string message, response, protocol;
+    std::string message, response, protocol, username;
+    bool loggedIn = false;
     do {
         message = receiveMessageFromClient(clientSocket, BUFFER_SIZE);
         std::istringstream inputStream(message);
         getline(inputStream,protocol);
-        if(protocol == "SEND"){
-            response = receiveSendProtocol(message,fileManager);
-        }else if(protocol == "LIST"){
-            response = receiveListProtocol(message,fileManager);
-        }else if(protocol == "READ"){
-            response = receiveReadProtocol(message,fileManager);
-        }else if(protocol == "DEL"){
-            response = receiveDelProtocol(message,fileManager);
-        }else if(protocol == "LOGIN"){
-            response = receiveLoginProtocol(message,uvl);
-        }else if(protocol == "QUIT"){
-            continue;
+        if(!loggedIn){
+            if(protocol == "LOGIN"){
+                response = receiveLoginProtocol(message,uvl,username);
+                loggedIn = response == "OK\n";
+            }else if(protocol != "QUIT"){
+                std::cout << "Invalid command has been sent no action performed" << std::endl;
+            }
         }else{
-            std::cout << "Invalid command has been sent no action performed" << std::endl; 
+            if(protocol == "SEND"){
+                response = receiveSendProtocol(message,fileManager,username);
+            }else if(protocol == "LIST"){
+                response = receiveListProtocol(message,fileManager,username);
+            }else if(protocol == "READ"){
+                response = receiveReadProtocol(message,fileManager,username);
+            }else if(protocol == "DEL"){
+                response = receiveDelProtocol(message,fileManager,username);
+            }else if(protocol != "QUIT"){
+                std::cout << "Invalid command has been sent no action performed" << std::endl; 
+            }   
         }
         sendMessageToClient(clientSocket, response);
     } while (protocol != "QUIT");
